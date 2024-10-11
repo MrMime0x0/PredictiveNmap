@@ -1,6 +1,6 @@
 # PredictiveNmap
 
-<br>This is a nmap script that works on predicting the ports.</br>
+<br>This is a nmap script that works by predicting the ports on the remote target.</br>
 
 <br>File System structure shown in the image below:</br>
 ![PredictiveNmap](https://github.com/user-attachments/assets/5de35d71-e5df-4a41-b2c1-91c751bb3105)
