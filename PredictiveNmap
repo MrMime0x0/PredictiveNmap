@@ -1,76 +1,123 @@
 // Function to simulate historical data and make a weighted prediction
-predict_port_status = function(port)
-  // Simulate past data (e.g., number of times the port was open in the past 100 checks)
-  past_open_count = floor((rnd() * 80) + 10)  // Past times port was open (10-90 range)
-  total_checks = 100  // Simulating a total of 100 checks
-  
-  // Probability that the port will be open based on historical data
+predict_port_status = function(past_open_count, total_checks)
   historical_probability = past_open_count / total_checks
-  
-  // Add some randomness for unpredictability (a random factor between 0.8 and 1.2)
   random_factor = 0.8 + rnd() * 0.4
-  
-  // Final prediction score, scaled to 1-10
   prediction = floor(historical_probability * 10 * random_factor)
   
-  // Clamp the result to be within 1 and 10
   if prediction < 1 then prediction = 1 end if
   if prediction > 10 then prediction = 10 end if
   
   return prediction
 end function
 
+// Function to log errors or failed scans
+log_error = function(message)
+  error_log_path = "/home/[REDACTED]/Downloads/error_log.txt"
+  error_file = get_shell.host_computer.File(error_log_path)
+  
+  if not error_file then
+    get_shell.host_computer.touch("/home/[REDACTED]/Downloads", "error_log.txt")
+    error_file = get_shell.host_computer.File(error_log_path)
+  end if
+  
+  if error_file then
+    existing_content = error_file.get_content()
+    if not existing_content then
+      existing_content = ""  // Set to empty if no content
+    end if
+    error_file.set_content(existing_content + current_date() + ": " + message + "\n")
+    print("Logged error: " + message)
+  else
+    print("Error: Could not log error. File does not have necessary permissions.")
+  end if
+end function
+
 // Function to scan a given IP, simulate port scanning, and write the results to a file
-scan_and_predict = function(ip)
-  // Get router object for the given IP
+scan_and_predict = function(ip, port_range_start, port_range_end)
   router = get_router(ip)
   
   if not router then
-    print("Error: Router not found for IP: " + ip)
+    log_error("Error: Router not found for IP: " + ip)
     return
   end if
   
-  // Open or create a file to store results
-  file_path = "/home/[DEDACTED]/scan_results.txt" // Adjust this as necessary
+  file_path = "/home/[REDACTED]/Downloads/scan_results.txt"
   result_file = get_shell.host_computer.File(file_path)
   
-  // Check if the file exists or needs to be created
+  // Check if file exists, if not create it
   if not result_file then
-    get_shell.host_computer.touch("/home/[REDACTED]", "scan_results.txt")
+    get_shell.host_computer.touch("/home/[REDACTED]/Downloads", "scan_results.txt")
     result_file = get_shell.host_computer.File(file_path)
   end if
   
-  // Read current content from the file
-  existing_content = result_file.get_content()
-  if not existing_content then
-    existing_content = ""  // Set to empty if no content
-  end if
-  
-  // Prepare result content
-  results = "IP: " + ip + "\n"
-  
-  // Simulate a scan over a range of ports (e.g., 20-30 for simplicity)
-  for port_num in range(20, 30)
-    port = router.ping_port(port_num)
-    
-    // Check if the port responded (i.e., it's open)
-    if port then
-      print("Discovered open port: " + str(port_num))
-      // Predict the port status using the weighted prediction function
-      prediction = predict_port_status(port)
-      results = results + "Port: " + str(port_num) + " Prediction: " + str(prediction) + "\n"
-    else
-      print("Port " + str(port_num) + " is closed or not responding.")
+  // Only proceed if the file exists
+  if result_file then
+    existing_content = result_file.get_content()
+    if not existing_content then
+      existing_content = ""  // Set to empty if no content
     end if
-  end for
-  
-  // Write the results to the file by appending them to existing content
-  result_file.set_content(existing_content + results + "\n")
-  print("Results written to: " + file_path)
+    
+    results = "IP: " + ip + "\n"
+    open_ports = 22
+    closed_ports = 3306
+    
+    for port_num in range(port_range_start, port_range_end)
+      port = router.ping_port(port_num)
+      
+      if port then
+        open_ports = open_ports + 1
+        past_open_count = floor((rnd() * 80) + 10)  // Simulated past open count
+        total_checks = 10000  // Simulated total checks
+        prediction = predict_port_status(past_open_count, total_checks)
+        
+        results = results + "Port: " + str(port_num) + " Status: Open, Prediction: " + str(prediction) + "/10\n"
+      else
+        closed_ports = closed_ports + 1
+        results = results + "Port: " + str(port_num) + " Status: Closed\n"
+      end if
+    end for
+    
+    // Append results to the file
+    result_file.set_content(existing_content + results + "\n")  // Write updated results
+    print("Results written to: " + file_path)
+    
+    // Print summary to the terminal
+    print("Summary for IP: " + ip)
+    print("Open ports: " + str(open_ports))
+    print("Closed ports: " + str(closed_ports))
+    print("Total scanned ports: " + str(open_ports + closed_ports))
+  else
+    log_error("Error: Could not write to scan_results.txt. File does not exist.")
+  end if
 end function
 
-// Example of scanning a list of IPs
-ips = ["remote_ip_here"]
-for ip in ips
-  scan_and_predict(ip)
-end for
+// Function to get user input for IPs and port range
+get_user_input = function()
+  ip_list = user_input("Enter IPs separated by commas (e.g., lan or remote ip):")
+  ips = ip_list.split(",")
+  
+  port_range_start = user_input("Enter the starting port number (e.g., 20):").to_int
+  port_range_end = user_input("Enter the ending port number (e.g., 30):").to_int
+  
+  return [ips, port_range_start, port_range_end]
+end function
+
+// Main execution block
+main = function()
+  user_input_data = get_user_input()
+  ips = user_input_data[0]
+  port_range_start = user_input_data[1]
+  port_range_end = user_input_data[2]
+  
+  for ip in ips
+    ip = ip.trim
+    if is_valid_ip(ip) then
+      scan_and_predict(ip, port_range_start, port_range_end)
+    else
+      log_error("Invalid IP address: " + ip)
+    end if
+  end for
+end function
+
+// Start the program
+main()
